@@ -29,6 +29,8 @@ export interface IOrder extends Document {
   totalAmount: number;
 
   paymentMethod: "COD" | "ONLINE";
+  stripeSessionId?: string | null;
+  estimatedDelivery?: Date | null;
   paymentStatus:
     | "PENDING"
     | "PAID"

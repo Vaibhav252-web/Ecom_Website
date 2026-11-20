@@ -1,5 +1,9 @@
-
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
+import { authProductCartApi } from "./productCart.auth";
+
+// Backend base URL (set VITE_API_URL in client/.env to change it)
+export const API_BASE_URL: string =
+  import.meta.env.VITE_API_URL ?? "http://localhost:4040";
 
 // Shipping Address Type
 export interface ShippingAddress {
@@ -12,10 +16,23 @@ export interface ShippingAddress {
   country: string;
 }
 
+export type PaymentMethod = "COD" | "ONLINE";
+
+export type PaymentStatus = "PENDING" | "PAID" | "FAILED" | "REFUNDED";
+
+export type OrderStatus =
+  | "PLACED"
+  | "CONFIRMED"
+  | "PROCESSING"
+  | "SHIPPED"
+  | "DELIVERED"
+  | "CANCELLED"
+  | "RETURNED";
+
 // Place Order Request Type
 export interface PlaceOrderRequest {
   shippingAddress: ShippingAddress;
-  paymentMethod: "COD" | "ONLINE";
+  paymentMethod: PaymentMethod;
 }
 
 // Order Item Type
@@ -40,34 +57,23 @@ export interface Order {
   tax: number;
   discount: number;
   totalAmount: number;
-  paymentMethod: "COD" | "ONLINE";
-  paymentStatus: "PENDING" | "PAID" | "FAILED" | "REFUNDED";
-  orderStatus:
-    | "PLACED"
-    | "CONFIRMED"
-    | "PROCESSING"
-    | "SHIPPED"
-    | "DELIVERED"
-    | "CANCELLED";
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  orderStatus: OrderStatus;
+  stripeSessionId?: string | null;
+  estimatedDelivery?: string | null;
   createdAt: string;
   updatedAt: string;
-  __v: number;
 }
 
-export interface GetMyOrderRequest {
-  userId: string;
-}
-
-export interface GetOrderByIdRequest {
+export interface VerifyPaymentRequest {
   orderId: string;
-  userId: string;
+  sessionId: string;
 }
 
-export interface CancleOrderRequest{
+export interface CancleOrderRequest {
   orderId: string;
-  userId: string;
 }
-
 
 // Generic API Response Type
 export interface ApiResponse<T> {
@@ -76,9 +82,15 @@ export interface ApiResponse<T> {
   data: T;
 }
 
-// Place Order Response Type
 export interface PlaceOrderResponse {
   order: Order;
+  // Stripe payment page link (null for Cash on Delivery)
+  checkoutUrl: string | null;
+}
+
+export interface VerifyPaymentResponse {
+  order: Order;
+  paid: boolean;
 }
 
 export interface GetMyOrderResponse {
@@ -93,12 +105,32 @@ export interface CancleOrderResponse {
   order: Order;
 }
 
+// Turn any error (RTK Query or normal) into a readable message
+export const getApiErrorMessage = (
+  error: unknown,
+  fallback = "Something went wrong. Please try again.",
+): string => {
+  if (typeof error === "object" && error !== null) {
+    const data = (error as { data?: { message?: unknown } }).data;
+
+    if (data && typeof data.message === "string") {
+      return data.message;
+    }
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return fallback;
+};
+
 // RTK Query API
 export const authOrderApi = createApi({
   reducerPath: "orderApi",
 
   baseQuery: fetchBaseQuery({
-    baseUrl: "http://localhost:4040/api/order",
+    baseUrl: `${API_BASE_URL}/api/order`,
 
     prepareHeaders: (headers) => {
       const token = localStorage.getItem("token");
@@ -114,49 +146,87 @@ export const authOrderApi = createApi({
   tagTypes: ["Order"],
 
   endpoints: (builder) => ({
-    // Place Order
+    // Place Order (COD or ONLINE)
     placeOrder: builder.mutation<
       ApiResponse<PlaceOrderResponse>,
       PlaceOrderRequest
     >({
-      query: (credentials) => ({
+      query: (body) => ({
         url: "/placeOrder",
         method: "POST",
-        body: credentials,
+        body,
       }),
       invalidatesTags: ["Order"],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          // COD clears the cart on the server, so refresh the cart data
+          dispatch(authProductCartApi.util.invalidateTags(["Cart"]));
+        } catch {
+          // error is handled by the component
+        }
+      },
     }),
 
-    // Get All order
-    getMyOrder: builder.query<ApiResponse<GetMyOrderResponse>, GetMyOrderRequest>({
+    // Confirm Stripe payment
+    verifyPayment: builder.mutation<
+      ApiResponse<VerifyPaymentResponse>,
+      VerifyPaymentRequest
+    >({
       query: (body) => ({
-        url: "/getMyOreder",
-        method: "GET",
+        url: "/verifyPayment",
+        method: "POST",
         body,
+      }),
+      invalidatesTags: ["Order"],
+      async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
+        try {
+          await queryFulfilled;
+          // Cart is cleared on the server after a successful payment
+          dispatch(authProductCartApi.util.invalidateTags(["Cart"]));
+        } catch {
+          // error is handled by the component
+        }
+      },
+    }),
+
+    // Get all orders of the logged in user
+    getMyOrder: builder.query<ApiResponse<GetMyOrderResponse>, void>({
+      query: () => ({
+        url: "/getMyOrder",
+        method: "GET",
       }),
       providesTags: ["Order"],
     }),
 
-    // Get order by the orderId
-    getOrderById: builder.mutation<ApiResponse<GetOrderByIdResponse>, GetOrderByIdRequest>({
-      query: (credintial) => ({
-        url: "/getOrderById",
-        method: "POST",
-        body: credintial,
+    // Get one order by id
+    getOrderById: builder.query<ApiResponse<GetOrderByIdResponse>, string>({
+      query: (orderId) => ({
+        url: `/getOrder/${orderId}`,
+        method: "GET",
       }),
-      invalidatesTags: ["Order"]
+      providesTags: ["Order"],
     }),
 
-    // Cancle Order
-    cancleOrder: builder.mutation<ApiResponse<CancleOrderResponse>, CancleOrderRequest>({
+    // Cancel Order
+    cancleOrder: builder.mutation<
+      ApiResponse<CancleOrderResponse>,
+      CancleOrderRequest
+    >({
       query: (body) => ({
         url: "/cancleOrder",
         method: "POST",
         body,
       }),
-      invalidatesTags: ["Order"]
-    })
+      invalidatesTags: ["Order"],
+    }),
   }),
 });
 
-export const { usePlaceOrderMutation } = authOrderApi;
+export const {
+  usePlaceOrderMutation,
+  useVerifyPaymentMutation,
+  useGetMyOrderQuery,
+  useGetOrderByIdQuery,
+  useCancleOrderMutation,
+} = authOrderApi;

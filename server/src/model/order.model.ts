@@ -95,6 +95,16 @@ const orderSchema = new Schema<IOrder>(
       default: "PENDING",
     },
 
+    estimatedDelivery: {
+      type: Date,
+      default: null,
+    },
+
+    stripeSessionId: {
+      type: String,
+      default: null,
+    },
+
     orderStatus: {
       type: String,
       enum: [

@@ -142,6 +142,33 @@ const ProductDetailPage = () => {
     }
   };
 
+  // Buy now: put the product in the cart, then go straight to checkout
+  const handleBuyNow = async () => {
+    if (!product) return;
+
+    if (product.size?.length && !selectedSize) {
+      alert("Please select a size");
+      return;
+    }
+
+    if (quantity < 1 || quantity > product.stock) {
+      alert("Please select a valid quantity");
+      return;
+    }
+
+    try {
+      await addToCart({
+        productId: product._id,
+        quantity,
+        ...(selectedSize ? { size: selectedSize } : {}),
+      }).unwrap();
+
+      navigate("/checkout");
+    } catch (err) {
+      console.error("Failed to start checkout:", err);
+    }
+  };
+
   // No product selected
   if (!sharedId) {
     return (
@@ -506,16 +533,7 @@ const ProductDetailPage = () => {
                       quantity > product.stock ||
                       (Boolean(product.size?.length) && !selectedSize)
                     }
-                    onClick={() => {
-                      // Checkout flow can be connected here.
-                      navigate("/checkout", {
-                        state: {
-                          productId: product._id,
-                          quantity,
-                          ...(selectedSize ? { size: selectedSize } : {}),
-                        },
-                      });
-                    }}
+                    onClick={handleBuyNow}
                     sx={{
                       py: 1.5,
                       borderRadius: 2,

@@ -25,6 +25,7 @@ interface NavBarProps {
 
 import SearchIcon from "@mui/icons-material/Search";
 import ShoppingCartIcon from "@mui/icons-material/ShoppingCart";
+import ReceiptLongIcon from "@mui/icons-material/ReceiptLong";
 import MenuIcon from "@mui/icons-material/Menu";
 import CloseIcon from "@mui/icons-material/Close";
 
@@ -325,6 +326,26 @@ const NavBar = ({ onFilterChange, onCategoryChange }: NavBarProps) => {
               >
                 <ShoppingCartIcon sx={{ mr: 1 }} />
                 Cart
+              </Box>
+            ) : (
+              " "
+            )}
+
+            {/* My Orders */}
+            {userRole === "user" ? (
+              <Box
+                onClick={() => navigate("/my-orders")}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  backgroundColor: "rgba(255, 255, 255, 0.15)",
+                  borderRadius: 1,
+                  p: 1,
+                  cursor: "pointer",
+                }}
+              >
+                <ReceiptLongIcon sx={{ mr: 1 }} />
+                Orders
               </Box>
             ) : (
               " "

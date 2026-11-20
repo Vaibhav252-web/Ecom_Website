@@ -6,6 +6,7 @@ import path from "path";
 
 import { ConnectDB } from "./utils/helper";
 import router from "./routes";
+import { errorMiddleware } from "./middleware/error.middleware";
 
 dotenv.config();
 
@@ -30,6 +31,9 @@ app.use(
 // Existing routes — no change needed
 app.use("/api", router);
 
+// Must be registered AFTER the routes so errors come back as JSON
+app.use(errorMiddleware);
+
 ConnectDB()
   .then(() => {
     console.log("MongoDB is connected successfully");
@@ -45,3 +49,5 @@ ConnectDB()
   });
 
 export default app;
+
+// https://github.com/Vaibhav252-web/Ecom_Website.git
